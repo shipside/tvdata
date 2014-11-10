@@ -3,7 +3,8 @@
 
 from __future__ import division
 from timeit import Timer
-import time,datetime,timelimit
+import time,datetime
+#,timelimit
 import TimeDeal as TD
 import pandas as pd
 import csv
@@ -240,12 +241,22 @@ def deal_file(channeldata_path,userdata_path,branddata_path,channel2iddata_path,
 	create_userad_table(user_ad,channeldata_dict)
 
 if __name__=='__main__':
+	import sys
+	#add filename argv support
+	if len(sys.argv) < 2:
+		sys.exit('Usage: python %s <tvdatafile-name.csv>' % sys.argv[0])
+	if not os.path.exists(sys.argv[1]):
+		sys.exit('ERROR: Tvdatafile %s was not found!' % sys.argv[1])
+
 	stime = datetime.datetime.now()
 	print "Code started at time:",time.strftime('%Y-%m-%d %H:%M:%S',time.localtime())
 	datapath = os.path.join(os.getcwd(),'tvdatas')
 	channeldata_path = os.path.join(datapath,'TVdata.csv')
 	channel2iddata_path = os.path.join(datapath,'channelids.csv')
-	userdata_path = os.path.join(datapath,'20140217_2.csv')
+	
+	#add filename argv support
+	userdata_path = sys.argv[1]
+
 	branddata_path = os.path.join(datapath,'brand.csv')
 	value_userdata_path = os.path.join(datapath,'ca2stb.csv')
 	#开始分析文件
