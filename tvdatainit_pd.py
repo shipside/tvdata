@@ -3,12 +3,10 @@
 
 from __future__ import division
 from timeit import Timer
-import time,datetime,timelimit
+import time,datetime
 import TimeDeal as TD
 import pandas as pd
-import csv
-import profile
-import os
+import csv,profile,os
 
 def fuzzy_matching(word,key):
 	'''对字符进行模糊匹配，返回结果类型为“_sre.SRE_MATCH”或“NoneType”。（可以用if进行判断）
@@ -57,7 +55,7 @@ def read_channeldatas(channeldata_path,branddata_path,channel2iddata_path):
 					for brrow in brdata:
 						if fuzzy_matching(row[7],brrow[1]):
 							add_this_row = True
-							temp_dict[ad_classify1] = row[0]
+							temp_dict[ad_classify1] = brrow[0]
 							break
 						else:
 							if not temp_dict.has_key(ad_classify1):
@@ -65,23 +63,23 @@ def read_channeldatas(channeldata_path,branddata_path,channel2iddata_path):
 			if row[0]!="":
 				line_num = 0
 				channelid = int(channel2iddict[row[0].decode('gbk')])
-				channeldata_dict[channelid] = pd.DataFrame(index = range(0,1),columns = ["adstarttime","adendtime","addelta","classify"])
+				channeldata_dict[channelid] = pd.DataFrame(index=range(0,1),columns=["adstarttime","adendtime","addelta","classify"])
 				if add_this_row:
 					erow.append(row[2])
 					erow.append(row[3])
 					erow.append(row[4])
-					erow.append(row[7].decode('gbk'))
+					erow.append(temp_dict[ad_classify1])
 					channeldata_dict[channelid].ix[line_num] = erow
 			else:
 				if add_this_row:
 					erow.append(row[2])
 					erow.append(row[3])
 					erow.append(row[4])
-					erow.append(row[7].decode('gbk'))
+					erow.append(temp_dict[ad_classify1])
 					channeldata_dict[channelid].ix[line_num] = erow
 					line_num+=1
+	print temp_dict.values()
 	return channeldata_dict
-
 
 def find_value_userdatas(value_userdata_path):
 	'''读取需要分析的用户文件并输出userids
@@ -106,7 +104,7 @@ def read_userdatas(userdata_path):
 	return userdata
 
 def cut(stime,etime):
-	'''按照间隔时间限制对时间进行分割操作（需要用到timelimit.py文件）
+	'''按照间隔时间限制对时间进行分割操作（需要用到TimeDeal.py文件）
 	'''
 	stime_delta = []
 	limit = TD.timelimit 	#首先将输入时间的日期与时间分开，并得到开始时间是星期几
@@ -121,8 +119,6 @@ def cut(stime,etime):
 	stime_delta.append(TD.str2seconds(stime))
 	stime_delta.append(delta)
 	return stime_delta
-
-
 
 def valueable_ad(user_ad,duration,temp_channel,channeldata_dict):
 	'''根据广告时间和用户收视情况统计用户观看广告情况
@@ -195,7 +191,6 @@ def record_number_of_ads(user_ad,userdatas,channeldata_dict,value_userdatas):
 	print "debug: userad_call=", userad_call
 	return user_ad
 
-
 def create_userad_table(user_ad,channeldata_dict):
 	'''生成userad_table.csv文件
 	'''
@@ -206,7 +201,8 @@ def create_userad_table(user_ad,channeldata_dict):
 	for channel in channeldata_dict:
 		ad_classify.update(set(channeldata_dict[channel]["classify"]))
 	for i in ad_classify:
-		classify.append(i.encode("gbk"))
+		classify.append(int(i))
+	classify.sort()
 	with open("userad_table.csv","wb") as finaldatas:
 		spamwriter = csv.writer(finaldatas)
 		row_1 = list(classify)
@@ -217,12 +213,11 @@ def create_userad_table(user_ad,channeldata_dict):
 			row = []
 			row.append(j)
 			for cl in classify:
-				if cl.decode("gbk") in user_ad[j].keys():
-					row.append(user_ad[j][cl.decode("gbk")])
+				if str(cl) in user_ad[j].keys():
+					row.append(user_ad[j][str(cl)])
 				else:
-					row.append(None)
+					row.append(0)
 			spamwriter.writerow(row)
-
 
 def deal_file(channeldata_path,userdata_path,branddata_path,channel2iddata_path,value_userdata_path):
 	'''处理单个userdata文件
@@ -245,7 +240,7 @@ if __name__=='__main__':
 	datapath = os.path.join(os.getcwd(),'tvdatas')
 	channeldata_path = os.path.join(datapath,'TVdata.csv')
 	channel2iddata_path = os.path.join(datapath,'channelids.csv')
-	userdata_path = os.path.join(datapath,'20140217_2.csv')
+	userdata_path = os.path.join(datapath,'20140217_1.csv')
 	branddata_path = os.path.join(datapath,'brand.csv')
 	value_userdata_path = os.path.join(datapath,'ca2stb.csv')
 	#开始分析文件
