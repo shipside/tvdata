@@ -78,7 +78,6 @@ def read_channeldatas(channeldata_path,branddata_path,channel2iddata_path):
 					erow.append(temp_dict[ad_classify1])
 					channeldata_dict[channelid].ix[line_num] = erow
 					line_num+=1
-	print temp_dict.values()
 	return channeldata_dict
 
 def find_value_userdatas(value_userdata_path):
@@ -235,12 +234,20 @@ def deal_file(channeldata_path,userdata_path,branddata_path,channel2iddata_path,
 	create_userad_table(user_ad,channeldata_dict)
 
 if __name__=='__main__':
+	import sys
+	#add filename argv support
+	if len(sys.argv) < 2:
+		sys.exit('Usage: python %s <tvdatafile-name.csv>' % sys.argv[0])
+	if not os.path.exists(sys.argv[1]):
+		sys.exit('ERROR: Tvdatafile %s was not found!' % sys.argv[1])
+
 	stime = datetime.datetime.now()
 	print "Code started at time:",time.strftime('%Y-%m-%d %H:%M:%S',time.localtime())
 	datapath = os.path.join(os.getcwd(),'tvdatas')
 	channeldata_path = os.path.join(datapath,'TVdata.csv')
 	channel2iddata_path = os.path.join(datapath,'channelids.csv')
-	userdata_path = os.path.join(datapath,'20140217_1.csv')
+	#add filename argv support
+	userdata_path = sys.argv[1]
 	branddata_path = os.path.join(datapath,'brand.csv')
 	value_userdata_path = os.path.join(datapath,'ca2stb.csv')
 	#开始分析文件
