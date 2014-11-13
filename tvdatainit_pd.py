@@ -8,6 +8,41 @@ import TimeDeal as TD
 import pandas as pd
 import csv,profile,os
 
+datestr = None
+
+def init_timelimit(datestr):
+	timelimit = []
+	import csv
+	with open('timelimit.csv', 'rb') as csvfile:
+		reader = csv.reader(csvfile, delimiter=',', quotechar='|')
+		id = 0
+		for row in reader:
+			slot = {}
+			slot['id'] = id
+			slot['start'] = TD.channeldata_timestr2int(datestr,row[1])
+			slot['worklimit'] = TD.str2timedelta(row[3]).seconds
+			slot['weekendlimit'] = TD.str2timedelta(row[4]).seconds
+			if id!=6:
+				slot['end'] = TD.channeldata_timestr2int(datestr,row[2])
+			else:
+				slot['end'] = TD.channeldata_timestr2int(datestr,row[2])+86400
+			timelimit.append(slot)
+			id += 1
+	return timelimit
+
+def trunctime(t1, delta, timelimit, weekday):
+	t1id = len(timelimit)-1
+	for slot in timelimit:
+		if t1 >= slot['start'] and t1 < slot['end']:
+			t1id=slot['id']
+			break
+	w_limit = timelimit[t1id]['weekendlimit']
+	if weekday!=0 and weekday!=6:
+		w_limit = timelimit[t1id]['worklimit']
+	if delta > w_limit:
+		delta = w_limit
+	return delta
+
 def fuzzy_matching(word,key):
 	'''对字符进行模糊匹配，返回结果类型为“_sre.SRE_MATCH”或“NoneType”。（可以用if进行判断）
 	'''
@@ -42,6 +77,9 @@ def read_channeldatas(channeldata_path,branddata_path,channel2iddata_path):
 		line_num = 0
 		for row in reader:
 			i = i+1
+			if i==2:
+				global datestr
+				datestr = row[2] 	#广告时间表中存日期的位置（第二行第三列）
 			if i<4:
 				continue
 			erow = []
@@ -65,16 +103,16 @@ def read_channeldatas(channeldata_path,branddata_path,channel2iddata_path):
 				channelid = int(channel2iddict[row[0].decode('gbk')])
 				channeldata_dict[channelid] = pd.DataFrame(index=range(0,1),columns=["adstarttime","adendtime","addelta","classify"])
 				if add_this_row:
-					erow.append(row[2])
-					erow.append(row[3])
-					erow.append(row[4])
+					erow.append(TD.channeldata_timestr2int(datestr,row[2]))
+					erow.append(TD.channeldata_timestr2int(datestr,row[3]))
+					erow.append(TD.str2timedelta(row[4]).seconds)
 					erow.append(temp_dict[ad_classify1])
 					channeldata_dict[channelid].ix[line_num] = erow
 			else:
 				if add_this_row:
-					erow.append(row[2])
-					erow.append(row[3])
-					erow.append(row[4])
+					erow.append(TD.channeldata_timestr2int(datestr,row[2]))
+					erow.append(TD.channeldata_timestr2int(datestr,row[3]))
+					erow.append(TD.str2timedelta(row[4]).seconds)
 					erow.append(temp_dict[ad_classify1])
 					channeldata_dict[channelid].ix[line_num] = erow
 					line_num+=1
@@ -98,25 +136,16 @@ def read_userdatas(userdata_path):
 	full_userdata = pd.read_csv(userdata_path,header=-1,names=range(1,7))
 	initial_userdata["userid"] = full_userdata[1]
 	initial_userdata["channelid"] = full_userdata[2]
-	initial_userdata["datetime"] = pd.to_datetime(full_userdata[3]+" "+full_userdata[4])
+	initial_userdata["datetime"] = full_userdata[3]+" "+full_userdata[4]
 	userdata = initial_userdata.sort_index(by=["userid","datetime"],ascending=[1, 0])
 	return userdata
 
-def cut(stime,etime):
+def cut(stime,etime,timelimit):
 	'''按照间隔时间限制对时间进行分割操作（需要用到TimeDeal.py文件）
 	'''
-	stime_delta = []
-	limit = TD.timelimit 	#首先将输入时间的日期与时间分开，并得到开始时间是星期几
-	s_time = TD.get_time(stime)
-	weekday = TD.get_weekday(stime) 	#trunctime为timelimit.py中函数，得到开始时间属于一天中的哪个时间段
-	week_id,s_time,delta = TD.trunctime(s_time,TD.str2seconds(etime)-TD.str2seconds(stime))
-	w_limit = limit[week_id]['weekendlimit']		#初始化w_limit为周末
-	#如果不是周末（星期六或星期日），limit取worklimit
-	if weekday!="0" and weekday!="6":
-		w_limit = limit[week_id]['worklimit']
-	#开始分析每个时间段，并对不同时间段做不同处理
-	stime_delta.append(TD.str2seconds(stime))
-	stime_delta.append(delta)
+	weekday = TD.get_weekday(stime) 	#根据起始时间得到日期
+	delta = trunctime(stime,etime-stime,timelimit,weekday)
+	stime_delta = [stime,delta]
 	return stime_delta
 
 def valueable_ad(user_ad,duration,temp_channel,channeldata_dict):
@@ -137,19 +166,17 @@ def valueable_ad(user_ad,duration,temp_channel,channeldata_dict):
 		if not temp_channel.has_key(channel_full_id):
 			temp_channel[channel_full_id] = False
 	if Is_channel:
-		s_datetime = duration[2]
-		s_date = TD.get_date(str(s_datetime))
-		e_datetime = s_datetime+duration[3]
-		e_date = TD.get_date(str(e_datetime))
+		s_time = duration[2]
+		e_time = s_time+duration[3]
 		this_channeldata = channeldata_dict[channel_id] 	#类型为DataFrame
 		for index,adstarttime in this_channeldata["adstarttime"].iteritems():
-			ad_deltatime = TD.str2timedelta(str(this_channeldata["addelta"][index]))
-			ads_datetime = datetime.datetime.combine(s_date,TD.str2time(str(adstarttime)))
-			ade_datetime = ads_datetime+ad_deltatime
+			ads_time = adstarttime
+			ade_time = this_channeldata["adendtime"][index]
+			ad_deltatime = this_channeldata["addelta"][index]
 			#判断是否符合条件
 			add_this_ad = False
-			if s_datetime<=ads_datetime:
-				if e_datetime>=ads_datetime:
+			if s_time<=ads_time:
+				if e_time>=ade_time:
 					add_this_ad = True
 			if add_this_ad:
 				if duration[0] in user_ad.keys():
@@ -159,29 +186,31 @@ def valueable_ad(user_ad,duration,temp_channel,channeldata_dict):
 						user_ad[duration[0]][this_channeldata["classify"][index]]=1
 				else:
 					user_ad[duration[0]]={this_channeldata["classify"][index]:1}
+	return True
 
-def record_number_of_ads(user_ad,userdatas,channeldata_dict,value_userdatas):
+def record_number_of_ads(user_ad,userdatas,channeldata_dict,value_userdatas,timelimit):
 	'''将用户观看频道时间与频道广告时间做比较，将符合标准的广告记录入user_ad字典中
 	'''
 	temp_channel = {}
 	different_usernum=0
 	userad_call=0
 	temp_userid = None
-	end_time = "2200-01-01 00:00:00"
-	temp_endtime = "2200-01-01 00:00:00"
+	end_time = TD.userdata_timestr2int("2020-01-01 00:00:00")
+	temp_endtime = TD.userdata_timestr2int("2020-01-01 00:00:00")
 	for index,userid in userdatas["userid"].iteritems():
 		if userid in value_userdatas:
 			userad_call+=1
 			channelid = userdatas["channelid"][index]
-			time_here = str(userdatas["datetime"][index])
+			time_here = TD.userdata_timestr2int(userdatas["datetime"][index])
+			#print type(time_here),type(end_time)
 			if temp_userid!=userid:
 				different_usernum+=1
 				temp_userid = userid
-				temp_duration = cut(time_here,end_time)
+				temp_duration = cut(time_here,end_time,timelimit)
 				duration = [userid,channelid]+temp_duration
 				valueable_ad(user_ad,duration,temp_channel,channeldata_dict)
 			else:
-				temp_duration = cut(time_here,temp_endtime)
+				temp_duration = cut(time_here,temp_endtime,timelimit)
 				duration = [userid,channelid]+temp_duration
 				valueable_ad(user_ad,duration,temp_channel,channeldata_dict)
 			temp_endtime = time_here
@@ -217,6 +246,7 @@ def create_userad_table(user_ad,channeldata_dict):
 				else:
 					row.append(0)
 			spamwriter.writerow(row)
+	return True
 
 def deal_file(channeldata_path,userdata_path,branddata_path,channel2iddata_path,value_userdata_path):
 	'''处理单个userdata文件
@@ -224,12 +254,15 @@ def deal_file(channeldata_path,userdata_path,branddata_path,channel2iddata_path,
 	user_ad = {}
 	print "Read_channeldatas started at time:",time.strftime('%Y-%m-%d %H:%M:%S',time.localtime())
 	channeldata_dict = read_channeldatas(channeldata_path,branddata_path,channel2iddata_path)
+	print "Init_timelimit started at time:",time.strftime('%Y-%m-%d %H:%M:%S',time.localtime())
+	global datestr
+	timelimit = init_timelimit(datestr)
 	print "Find_value_userdatas started at time:",time.strftime('%Y-%m-%d %H:%M:%S',time.localtime())
 	value_userdatas = find_value_userdatas(value_userdata_path)
 	print "Read_userdatas started at time:",time.strftime('%Y-%m-%d %H:%M:%S',time.localtime())
 	userdatas = read_userdatas(userdata_path)
 	print "Record_number_of_ads started at time:",time.strftime('%Y-%m-%d %H:%M:%S',time.localtime())
-	user_ad = record_number_of_ads(user_ad,userdatas,channeldata_dict,value_userdatas)
+	user_ad = record_number_of_ads(user_ad,userdatas,channeldata_dict,value_userdatas,timelimit)
 	print "create_userad_table started at time:",time.strftime('%Y-%m-%d %H:%M:%S',time.localtime())
 	create_userad_table(user_ad,channeldata_dict)
 
