@@ -1,1 +1,3 @@
 *.pyc
+*.prof
+.ipynb_checkpoints/
